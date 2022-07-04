@@ -1,7 +1,7 @@
 package demo
 
 import (
-	//"time"
+	"time"
 	"context"
 	"sync"
 	
@@ -45,7 +45,27 @@ type Controller struct {
 func (c *Controller) Run(ctx context.Context) {
 	go c.listenIndChan(ctx)
 
-	
+	go func() {
+		for {
+			chEntries := make(chan *store.Entry, 1024)
+			err := c.ueStore.Entries(ctx, chEntries)
+			if err != nil {
+				log.Warn(err)
+				
+			} else {
+				
+				for entry := range chEntries {
+					ueData := entry.Value.(UeData)
+					log.Infof("UE: %v CGI: %v", ueData.UeID, ueData.CGIString)
+						for cell, rsrp := range ueData.RsrpTable {
+							log.Infof(" - %v: %v", cell, rsrp)
+						}
+					log.Info("  ")
+				}
+			}
+			time.Sleep(1 * time.Second)
+		}
+	}()
 }
 
 func (c *Controller) listenIndChan(ctx context.Context) {
@@ -112,7 +132,7 @@ func (c *Controller) handlePeriodicReport(ctx context.Context, header *e2sm_mho.
 	ueData.E2NodeID = e2NodeID
 
 	rsrpServing, rsrpNeighbors, rsrpTable, cgiTable := c.GetRsrpFromMeasReport(ctx, GetNciFromCellGlobalID(header.GetCgi()), message.MeasReport)
-	//log.Infof("--- handlePeriodicReport UE: %v CGI: %v RSRP: %v", ueIdString, cgi, rsrpServing)
+	log.Infof("--- handlePeriodicReport UE: %v CGI: %v RSRP: %v", ueIdString, cgi, rsrpServing)
 	
 	old5qi := ueData.FiveQi
 	ueData.FiveQi = c.GetFiveQiFromMeasReport(ctx, GetNciFromCellGlobalID(header.GetCgi()), message.MeasReport)
@@ -154,7 +174,7 @@ func (c *Controller) handleMeasReport(ctx context.Context, header *e2sm_mho.E2Sm
 	ueData.E2NodeID = e2NodeID
 
 	ueData.RsrpServing, ueData.RsrpNeighbors, ueData.RsrpTable, ueData.CgiTable = c.GetRsrpFromMeasReport(ctx, GetNciFromCellGlobalID(header.GetCgi()), message.MeasReport)
-	//log.Infof("--- handleMeasReport UE: %v CGI: %v RSRP: %v", ueIdString, cgi, ueData.RsrpServing)
+	log.Infof("--- handleMeasReport UE: %v CGI: %v RSRP: %v", ueIdString, cgi, ueData.RsrpServing)
 
 	old5qi := ueData.FiveQi
 	ueData.FiveQi = c.GetFiveQiFromMeasReport(ctx, GetNciFromCellGlobalID(header.GetCgi()), message.MeasReport)
