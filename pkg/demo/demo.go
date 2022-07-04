@@ -1,9 +1,10 @@
 package demo
 
 import (
+	//"time"
 	"context"
 	"sync"
-	"reflect"
+	
 	"strconv"
 
 	"github.com/onosproject/onos-lib-go/pkg/logging"
@@ -43,6 +44,8 @@ type Controller struct {
 
 func (c *Controller) Run(ctx context.Context) {
 	go c.listenIndChan(ctx)
+
+	
 }
 
 func (c *Controller) listenIndChan(ctx context.Context) {
@@ -60,7 +63,7 @@ func (c *Controller) listenIndChan(ctx context.Context) {
 				switch x := indMessage.E2SmMhoIndicationMessage.(type) {
 				case *e2sm_mho.E2SmMhoIndicationMessage_IndicationMessageFormat1:
 					if indMsg.TriggerType == e2sm_mho.MhoTriggerType_MHO_TRIGGER_TYPE_UPON_RCV_MEAS_REPORT {
-						//go c.handleMeasReport(ctx, indHeader.GetIndicationHeaderFormat1(), indMessage.GetIndicationMessageFormat1(), e2NodeID)
+						go c.handleMeasReport(ctx, indHeader.GetIndicationHeaderFormat1(), indMessage.GetIndicationMessageFormat1(), e2NodeID)
 					} else if indMsg.TriggerType == e2sm_mho.MhoTriggerType_MHO_TRIGGER_TYPE_PERIODIC {
 						go c.handlePeriodicReport(ctx, indHeader.GetIndicationHeaderFormat1(), indMessage.GetIndicationMessageFormat1(), e2NodeID)
 					}
@@ -88,28 +91,29 @@ func (c *Controller) handlePeriodicReport(ctx context.Context, header *e2sm_mho.
 	cgi = c.ConvertCgiToTheRightForm(cgi)
 	cgiObject := header.GetCgi()
 
+
 	ueIdString := strconv.Itoa(int(ueID))
 	n := (16 - len(ueIdString))
 	for i := 0; i < n; i++ {
-		ueIdString = "0" + ueIdString
+		//ueIdString = "0" + ueIdString
 	}
 	var ueData *UeData
-	newUe := false
+	//newUe := false
 	ueData = c.GetUe(ctx, ueIdString)
 	if ueData == nil {
 		ueData = c.CreateUe(ctx, ueIdString)
 		c.AttachUe(ctx, ueData, cgi, cgiObject)
-		newUe = true
+		
 	} else if ueData.CGIString != cgi {
-		return
+		c.AttachUe(ctx, ueData, cgi, cgiObject)
+	
 	}
 
 	ueData.E2NodeID = e2NodeID
 
 	rsrpServing, rsrpNeighbors, rsrpTable, cgiTable := c.GetRsrpFromMeasReport(ctx, GetNciFromCellGlobalID(header.GetCgi()), message.MeasReport)
-
-	//log.Info(ueIdString, cgi, rsrpServing, rsrpNeighbors)
-
+	//log.Infof("--- handlePeriodicReport UE: %v CGI: %v RSRP: %v", ueIdString, cgi, rsrpServing)
+	
 	old5qi := ueData.FiveQi
 	ueData.FiveQi = c.GetFiveQiFromMeasReport(ctx, GetNciFromCellGlobalID(header.GetCgi()), message.MeasReport)
 
@@ -117,14 +121,51 @@ func (c *Controller) handlePeriodicReport(ctx context.Context, header *e2sm_mho.
 		// log.Infof("\t\tQUALITY MESSAGE: 5QI for UE [ID:%v] changed [5QI:%v]\n", ueData.UeID, ueData.FiveQi)
 	}
 
-	if !newUe && rsrpServing == ueData.RsrpServing && reflect.DeepEqual(rsrpNeighbors, ueData.RsrpNeighbors) {
-		return
-	}
-
 	ueData.RsrpServing, ueData.RsrpNeighbors, ueData.RsrpTable, ueData.CgiTable = rsrpServing, rsrpNeighbors, rsrpTable, cgiTable
 	c.SetUe(ctx, ueData)
 
 }
+
+func (c *Controller) handleMeasReport(ctx context.Context, header *e2sm_mho.E2SmMhoIndicationHeaderFormat1, message *e2sm_mho.E2SmMhoIndicationMessageFormat1, e2NodeID string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	ueID, err := GetUeID(message.GetUeId())
+	if err != nil {
+		log.Errorf("handleMeasReport() couldn't extract UeID: %v", err)
+	}
+	cgi := GetCGIFromIndicationHeader(header)
+	cgi = c.ConvertCgiToTheRightForm(cgi)
+	cgiObject := header.GetCgi()
+
+	ueIdString := strconv.Itoa(int(ueID))
+	n := (16 - len(ueIdString))
+	for i := 0; i < n; i++ {
+		//ueIdString = "0" + ueIdString
+	}
+	var ueData *UeData
+	ueData = c.GetUe(ctx, ueIdString)
+	if ueData == nil {
+		ueData = c.CreateUe(ctx, ueIdString)
+		c.AttachUe(ctx, ueData, cgi, cgiObject)
+	} else if ueData.CGIString != cgi {
+		c.AttachUe(ctx, ueData, cgi, cgiObject)
+	}
+
+	ueData.E2NodeID = e2NodeID
+
+	ueData.RsrpServing, ueData.RsrpNeighbors, ueData.RsrpTable, ueData.CgiTable = c.GetRsrpFromMeasReport(ctx, GetNciFromCellGlobalID(header.GetCgi()), message.MeasReport)
+	//log.Infof("--- handleMeasReport UE: %v CGI: %v RSRP: %v", ueIdString, cgi, ueData.RsrpServing)
+
+	old5qi := ueData.FiveQi
+	ueData.FiveQi = c.GetFiveQiFromMeasReport(ctx, GetNciFromCellGlobalID(header.GetCgi()), message.MeasReport)
+	if (old5qi != ueData.FiveQi) {
+		//log.Infof("\t\tQUALITY MESSAGE: 5QI for UE [ID:%v] changed [5QI:%v]\n", ueData.UeID, ueData.FiveQi)
+	}
+
+	c.SetUe(ctx, ueData)
+
+}
+
 
 func (c *Controller) CreateUe(ctx context.Context, ueID string) *UeData {
 	if len(ueID) == 0 {
