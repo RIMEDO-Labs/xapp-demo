@@ -133,6 +133,12 @@ func (c *Controller) handlePeriodicReport(ctx context.Context, header *e2sm_mho.
 
 	rsrpServing, rsrpNeighbors, rsrpTable, cgiTable := c.GetRsrpFromMeasReport(ctx, GetNciFromCellGlobalID(header.GetCgi()), message.MeasReport)
 	log.Infof("--- handlePeriodicReport UE: %v CGI: %v RSRP: %v", ueIdString, cgi, rsrpServing)
+
+	plmnIdBytes := GetPlmnIDBytesFromCellGlobalID(cgiObject)
+	plmnId := PlmnIDBytesToInt(plmnIdBytes)
+	mcc, mnc := GetMccMncFromPlmnID(plmnId)
+
+	log.Infof("mcc: %v; mnc: %v; nci: %v", mcc, mnc, GetNciFromCellGlobalID(header.GetCgi()))
 	
 	old5qi := ueData.FiveQi
 	ueData.FiveQi = c.GetFiveQiFromMeasReport(ctx, GetNciFromCellGlobalID(header.GetCgi()), message.MeasReport)
@@ -346,7 +352,7 @@ func (c *Controller) GetRsrpFromMeasReport(ctx context.Context, servingNci uint6
 
 func (c *Controller) ConvertCgiToTheRightForm(cgi string) string {
 	
-	//return cgi[0:6] + cgi[14:15] + cgi[12:14] + cgi[10:12] + cgi[8:10] + cgi[6:8]
+	return cgi[0:6] + cgi[14:15] + cgi[12:14] + cgi[10:12] + cgi[8:10] + cgi[6:8]
 	
 	return cgi
 }
