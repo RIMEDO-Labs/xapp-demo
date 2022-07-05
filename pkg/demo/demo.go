@@ -326,7 +326,7 @@ func (c *Controller) GetRsrpFromMeasReport(ctx context.Context, servingNci uint6
 
 func (c *Controller) ConvertCgiToTheRightForm(cgi string) string {
 	
-	//return cgi[0:6] + cgi[14:15] + cgi[12:14] + cgi[10:12] + cgi[8:10] + cgi[6:8]
+	return cgi[0:6] + cgi[14:15] + cgi[12:14] + cgi[10:12] + cgi[8:10] + cgi[6:8]
 	
 	return cgi
 }
